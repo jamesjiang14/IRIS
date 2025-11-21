@@ -62,6 +62,9 @@ typedef struct {
     // Last computed moving-average score in [0, 1]
     float last_score;
 
+    // Count number of consecutive eye closures 
+    int consecutive_eye_closure;
+
     // Current alert flag (true => activate buzzer)
     bool  alert_flag;
 } RiskMonitor;
