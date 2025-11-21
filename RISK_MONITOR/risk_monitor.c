@@ -143,7 +143,16 @@ bool RiskMonitor_Update(RiskMonitor *rm,
     if (rm == NULL) return false;
 
     // 1) Hard eye-closure alert.
-    bool eye_hard_alert = (eye_closed_conf_pct >= EYE_HARD_ALERT_CONF_PCT);
+    if (eye_closed_conf_pct >= EYE_HARD_ALERT_CONF_PCT){
+        rm->consecutive_eye_count++ ;   //increment consecutive eye counter
+    } else {
+        rm->consecutive_eye_count = 0 ; //break loop and overwrite hard alert to false 
+        bool eye_hard_alert == FALSE
+    }
+
+    if(rm->consecutive_eye_count >= 125){ //with sampling rate of 12 ms, count of 125 ensures 1.5 seconds of consecutive eye closure before setting eye hard alert
+        bool eye_hard_alert == TRUE
+    }
 
     // 2) Hard heart-rate ROC alert based on absolute window ROC.
     float hr_roc_abs = fabsf(hr_window_roc_bpm_per_s);
