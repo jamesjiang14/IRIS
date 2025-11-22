@@ -53,6 +53,7 @@ int main(void)
     }
 
     MXC_I2C_SetFrequency(I2C_MASTER, I2C_FREQ);
+    
     printf("\n****************** DFR0440 Haptic Module Control *******************\n");
     
     //DF0440 Haptic Driver Variables
@@ -76,7 +77,7 @@ int main(void)
 
     printf("GPIO Configured. Waiting for HapticState change...\n");
 
-    /*
+    
     //ADXL345 Initialization
     uint8_t init_data[2];
 
@@ -88,20 +89,60 @@ int main(void)
 
     uint8_t reg = 0x32;
     uint8_t buffer[6];
+    
+    
 
      printf("\n****************** I2C HEART RATE SENSOR DEMO *******************\n");
+
+
      //Initialize Bio Sensor Hub
     uint32_t loopCount = 0;
     int MinHeartRate = 30; //Minimum heart rate for finger detection
 
-    SFE_Bio_Begin(&bioHub, SENSOR_I2C_PORT, SENSOR_RESET_PORT, SENSOR_RESET_PIN, SENSOR_MFIO_PORT, SFE_MFIO_PIN);
+    mxc_gpio_cfg_t MAX32664_RST = {
+    .port = MXC_GPIO0, //pointer to GPIO register
+    .mask = MXC_GPIO_PIN_5, //pin mask
+    .func = MXC_GPIO_FUNC_OUT, //function type
+    .pad  = MXC_GPIO_PAD_NONE, //pad type
+    .vssel = MXC_GPIO_VSSEL_VDDIO, //voltage select
+    .drvstr  = MXC_GPIO_DRVSTR_0, //drive strength
+    };
+    
+    if(MXC_GPIO_Config(&MAX32664_RST) != E_NO_ERROR) {
+        printf("Error configuring GPIO\n");
+        return -1;
+    }
+
+
+    mxc_gpio_cfg_t MAX32664_MFIO = {
+    .port = MXC_GPIO0, //pointer to GPIO register
+    .mask = MXC_GPIO_PIN_19, //pin mask
+    .func = MXC_GPIO_FUNC_OUT, //function type
+    .pad  = MXC_GPIO_PAD_NONE, //pad type
+    .vssel = MXC_GPIO_VSSEL_VDDIO, //voltage select
+    .drvstr  = MXC_GPIO_DRVSTR_0 //drive strength
+    };
+
+    if(MXC_GPIO_Config(&MAX32664_MFIO) != E_NO_ERROR) {
+        printf("Error configuring GPIO\n");
+        return -1;
+    }
+
+    //Initialization Sequence for application mode
+    MXC_GPIO_OutClr(MAX32664_RST.port, MAX32664_RST.mask);
+    MXC_Delay(MXC_DELAY_MSEC(10));
+
+    MXC_GPIO_OutSet(MAX32664_MFIO.port, MAX32664_MFIO.mask);
+    MXC_GPIO_OutSet(MAX32664_RST.port, MAX32664_RST.mask);
+    MXC_Delay(MXC_DELAY_MSEC(50));
+
     uint8_t status = SFE_Bio_SetOperatingMode(&bioHub, SFE_BIO_MODE_TWO); //Set sensor to heart rate mode
     if (status == 0){
         MXC_Delay(MXC_DELAY_MSEC(1000));
     }
 
     int BioConfig = SFE_Bio_ConfigBpm(&bioHub, SFE_BIO_MODE_ONE); //Configure sensor for BPM mode one
-    */
+    
 
     while(1) {
         
@@ -153,6 +194,7 @@ int main(void)
         printf("X=%d, Y=%d, Z=%d\n", x, y, z);
 
         MXC_Delay(100000); // 100 ms
+````````*/
 
         //Heart Rate Sensor Polling 
         // Read the processed BPM/SpO2 data from the sensor hub
@@ -177,7 +219,7 @@ int main(void)
         }
 
         loopCount++;
-        */
+        
         }
 }
 
