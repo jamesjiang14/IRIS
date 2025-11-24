@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "i2c.h"
+#include "adxl345.h"
 #include "mxc_device.h"
 #include "mxc_delay.h"
 #include "board.h"
@@ -12,12 +13,14 @@
 #include "gpio.h"
 
 
+
+
 /***** Definitions *****/
 #define I2C_MASTER MXC_I2C1 ///< I2C instance (Featherboard)
 
 #define I2C_FREQ 4000 ///< I2C clock frequency
 #define SENSOR_HUB_ADDR 0x55 //MAX32664 Sensor Hub Starting Address 
-#define ADXL345_ADDR 0x1D //ADXL345 Device Starting Address
+#define ADXL345_ADDR 0x1D //ADXL345 Device Starting Address with SDO high
 
 #define E_NO_ERROR 0 //Variable to check for errors over I2C initialization
 
@@ -25,16 +28,14 @@
 sfe_bio_ctx_t bioHub; 
 
 #define SENSOR_I2C_PORT    MXC_I2C1
-#define SENSOR_RESET_PORT  MXC_GPIO0       // Example: Reset pin on GPIO Port 0
-#define SENSOR_RESET_PIN   MXC_GPIO_PIN_5  // Example: Reset pin is Pin 5
-#define SENSOR_MFIO_PORT   MXC_GPIO0       // Example: MFIO pin on GPIO Port 0
-#define SFE_MFIO_PIN       MXC_GPIO_PIN_6  // Example: MFIO pin is Pin 6
 
 #define SUBCMD_EN 0x00 //enter application mode of sensor 
 #define READ_DATA_CMD 0x12 //address for read data command 
 
 
 //ADXL345 Commands
+adxl345_handle_t ADXL345;
+
 #define ADXL345_PWR_CTRL 0x2D //Set device in measurement mode  
 #define ADXL345_DTA_FORM 0x31 //Manipulate format of data in terms of G's
 #define ADXL345_BW_Rate 0x2C //manipulate sampling rate of accelerometer 
@@ -43,7 +44,9 @@ sfe_bio_ctx_t bioHub;
 
 // *****************************************************************************
 int main(void)
-{
+{ 
+    MXC_Delay(SEC(1));
+
     //Configure I2C
     printf("\n****************** I2C Configuration*******************\n");
     int error = MXC_I2C_Init(I2C_MASTER, 1, 0);
@@ -54,6 +57,7 @@ int main(void)
 
     MXC_I2C_SetFrequency(I2C_MASTER, I2C_FREQ);
     
+    /*
     printf("\n****************** DFR0440 Haptic Module Control *******************\n");
     
     //DF0440 Haptic Driver Variables
@@ -76,22 +80,24 @@ int main(void)
     MXC_GPIO_OutClr(HapDriver.port, HapDriver.mask);
 
     printf("GPIO Configured. Waiting for HapticState change...\n");
+    */
 
-    
+    /*
     //ADXL345 Initialization
     uint8_t init_data[2];
+    adxl345_init(&ADXL345);
+    adxl345_set_addr_pin(&ADXL345, ADXL345_ADDR);
 
-
-    //enable measurement mode
-    MXC_I2C_RevA_WriteByte(ADXL345_PWR_CTRL, 0x08); // Place power control in normal measurement mode
-    MXC_I2C_RevA_WriteByte(ADXL345_DTA_FORM, 0x01); // +/- 4G measurement mode
-    MXC_I2C_RevA_WriteByte(ADXL345_BW_Rate, 0x0A); // set sampling rate to 100 Hz
+    adxl345_set_mode(&ADXL345, ADXL345_MODE_BYPASS);
+    adxl345_set_interface(&ADXL345, ADXL345_INTERFACE_IIC);
+    adxl345_set_range(&ADXL345, ADXL345_RANGE_8G);
+    adxl345_set_rate(&ADXL345, ADXL345_RATE_400);
 
     uint8_t reg = 0x32;
     uint8_t buffer[6];
+    */
     
     
-
      printf("\n****************** I2C HEART RATE SENSOR DEMO *******************\n");
 
 
@@ -104,49 +110,68 @@ int main(void)
     .mask = MXC_GPIO_PIN_5, //pin mask
     .func = MXC_GPIO_FUNC_OUT, //function type
     .pad  = MXC_GPIO_PAD_NONE, //pad type
-    .vssel = MXC_GPIO_VSSEL_VDDIO, //voltage select
+    .vssel = MXC_GPIO_VSSEL_VDDIOH, //voltage select
     .drvstr  = MXC_GPIO_DRVSTR_0, //drive strength
     };
     
     if(MXC_GPIO_Config(&MAX32664_RST) != E_NO_ERROR) {
         printf("Error configuring GPIO\n");
         return -1;
-    }
-
+    };
 
     mxc_gpio_cfg_t MAX32664_MFIO = {
     .port = MXC_GPIO0, //pointer to GPIO register
     .mask = MXC_GPIO_PIN_19, //pin mask
     .func = MXC_GPIO_FUNC_OUT, //function type
     .pad  = MXC_GPIO_PAD_NONE, //pad type
-    .vssel = MXC_GPIO_VSSEL_VDDIO, //voltage select
+    .vssel = MXC_GPIO_VSSEL_VDDIOH, //voltage select
     .drvstr  = MXC_GPIO_DRVSTR_0 //drive strength
     };
-
+   
     if(MXC_GPIO_Config(&MAX32664_MFIO) != E_NO_ERROR) {
         printf("Error configuring GPIO\n");
         return -1;
     }
 
-    //Initialization Sequence for application mode
-    MXC_GPIO_OutClr(MAX32664_RST.port, MAX32664_RST.mask);
-    MXC_Delay(MXC_DELAY_MSEC(10));
-
-    MXC_GPIO_OutSet(MAX32664_MFIO.port, MAX32664_MFIO.mask);
-    MXC_GPIO_OutSet(MAX32664_RST.port, MAX32664_RST.mask);
-    MXC_Delay(MXC_DELAY_MSEC(50));
-
-    uint8_t status = SFE_Bio_SetOperatingMode(&bioHub, SFE_BIO_MODE_TWO); //Set sensor to heart rate mode
-    if (status == 0){
-        MXC_Delay(MXC_DELAY_MSEC(1000));
+   int bio_init_status = SFE_Bio_Begin(&bioHub, SENSOR_I2C_PORT, MAX32664_RST.port, MAX32664_RST.mask, MAX32664_MFIO.port, MAX32664_MFIO.mask);
+    if (bio_init_status != 0) {
+        printf("ERROR: SFE_Bio_Begin failed with code: %d\n", bio_init_status);
+        while(1); // Stop execution
+    } else {
+        printf("MAX32664 initialized successfully.\n");
     }
 
     int BioConfig = SFE_Bio_ConfigBpm(&bioHub, SFE_BIO_MODE_ONE); //Configure sensor for BPM mode one
+    if (BioConfig != 0) {
+        printf("ERROR: SFE_Bio_ConfigBpm failed with code: %d\n", BioConfig);
+        while(1); // Stop execution
+    } else {
+        printf("BPM Mode configured successfully.\n");
+    }
+
+    // Attempt to enable the MAX30101 sensor
+    int8_t control_status = SFE_Bio_Max30101Control(&bioHub, 1);
+
+    if (control_status == 0) {
+        // Command sent successfully, now verify the state
+        uint8_t sensor_state = SFE_Bio_ReadMAX30101State(&bioHub);
+        
+        if (sensor_state == 1) {
+            printf("MAX30101 is enabled and should be running.\n");
+            // If the LED is still off here, the issue is likely power or the MAX30101 itself.
+        } else {
+            printf("MAX30101 control command succeeded, but state read back is NOT enabled (State: %u).\n", sensor_state);
+            // This indicates a subtle failure or a timing issue.
+        }
+    } else {
+        printf("ERROR: Failed to send MAX30101 control command (Error: %d).\n", control_status);
+        // This indicates a fundamental I2C communication issue with the MAX32664 hub.
+    }
     
 
     while(1) {
         
-
+        /*
         //Haptic Code for toggle state
         if (HapticState == 1) {
             printf("Haptic State Active \n");
@@ -167,7 +192,8 @@ int main(void)
             HapticState = 0;
         }
         while(PB_Get(0)){}
-
+        */
+        
         /*
         //Accelerometer polling of X, Y, and Z data
         mxc_i2c_req_t req;
@@ -194,14 +220,14 @@ int main(void)
         printf("X=%d, Y=%d, Z=%d\n", x, y, z);
 
         MXC_Delay(100000); // 100 ms
-````````*/
+        */
 
         //Heart Rate Sensor Polling 
         // Read the processed BPM/SpO2 data from the sensor hub
         bioData_t data = SFE_Bio_ReadBpm(&bioHub); //Read BPM data from sensor
 
         // Check the Finger Detected status (Byte 6 of the FIFO buffer)
-        if (data.status == 0x01 && data.heartRate >= MinHeartRate) {
+        if (data.status == 0x01) {
             
             // --- DATA PRINT STATEMENT (Extracting the values) ---
             printf("[%lu] HR: %3u bpm | SpO2: %3u%% | Conf: %3u%% | Status: 0x%02X\n",
@@ -211,14 +237,16 @@ int main(void)
                    data.confidence,     // Extracted from Byte 2
                    data.status      // Extracted from Byte 5
             );
-            MXC_Delay(1000);
+            MXC_Delay(MXC_DELAY_MSEC(250));
 
         } else {
             // Finger not detected (Byte 6 is 0x00)
-            printf("[%lu] Waiting for finger...\n", loopCount);
+            if (loopCount % 1000 == 0){
+                printf("[%lu] Waiting for finger...\n", loopCount/1000);
+            }
+            loopCount++;
         }
-
-        loopCount++;
+               
         
         }
 }

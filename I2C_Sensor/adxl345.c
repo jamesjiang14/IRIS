@@ -1,4 +1,4 @@
-#include "driver_adxl345.h"
+#include "adxl345.h"
 
 /**
  * @brief chip register definition

@@ -260,43 +260,73 @@ uint8_t SFE_Bio_ConfigSensorBpm(sfe_bio_ctx_t *ctx, uint8_t mode)
 bioData_t SFE_Bio_ReadBpm(sfe_bio_ctx_t *ctx)
 {
     bioData_t libBpm = {0};
-    uint8_t statusChauf = SFE_Bio_ReadSensorHubStatus(ctx);
 
-    if (statusChauf == 1) return libBpm; 
-
-    SFE_Bio_NumSamplesOutFifo(ctx);
+    // CORRECTION 1: Check if there is actually data to read!
+    // SFE_Bio_NumSamplesOutFifo returns the number of samples available.
+    uint8_t numSamples = SFE_Bio_NumSamplesOutFifo(ctx);
+    if (numSamples == 0) {
+        // No data available, return empty struct
+        return libBpm; 
+    }
 
     if (ctx->_userSelectedMode == SFE_BIO_MODE_ONE)
     {
-        _readFillArray(ctx, READ_DATA_OUTPUT, SFE_BIO_READ_DATA, SFE_BIO_MAXFAST_ARRAY_SIZE, ctx->bpmArr);
+        // CORRECTION 2: Read 7 Bytes (Status + 6 Data Bytes)
+        // Original SFE_BIO_MAXFAST_ARRAY_SIZE is likely defined as 6. 
+        // We need 7 to get the Finger Status (Byte 6).
+        _readFillArray(ctx, READ_DATA_OUTPUT, SFE_BIO_READ_DATA, 7, ctx->bpmArr);
 
-        libBpm.heartRate = ((uint16_t)ctx->bpmArr[0] << 8);
-        libBpm.heartRate |= (ctx->bpmArr[1]);
+        // CORRECTION 3: Fix Indexing (Shift everything by 1)
+        
+        // Byte 0: General Hub Status
+        libBpm.status = ctx->bpmArr[0]; 
+
+        // Byte 1 & 2: Heart Rate
+        libBpm.heartRate = ((uint16_t)ctx->bpmArr[1] << 8);
+        libBpm.heartRate |= (ctx->bpmArr[2]);
         libBpm.heartRate /= 10;
-        libBpm.confidence = ctx->bpmArr[2];
-        libBpm.oxygen = ((uint16_t)ctx->bpmArr[3] << 8);
-        libBpm.oxygen |= ctx->bpmArr[4];
+
+        // Byte 3: Confidence
+        libBpm.confidence = ctx->bpmArr[3];
+
+        // Byte 4 & 5: SpO2
+        libBpm.oxygen = ((uint16_t)ctx->bpmArr[4] << 8);
+        libBpm.oxygen |= ctx->bpmArr[5];
         libBpm.oxygen /= 10;
-        libBpm.status = ctx->bpmArr[5];
+
+        // Byte 6: Extended Status (Finger Status)
+        // This contains the "0x03" you need to check for finger detection
+        libBpm.extStatus = ctx->bpmArr[6]; 
     }
     else if (ctx->_userSelectedMode == SFE_BIO_MODE_TWO)
     {
+        // Mode 2 usually adds R-Value and Extended Status differently. 
+        // Assuming standard layout: Status(1) + HR(2) + Conf(1) + SpO2(2) + ExtStatus(1) + R-Val(2) ...
+        // Total usually 10-12 bytes depending on version. 
+        // Let's assume the SparkFun standard map for Mode 2:
+        
         _readFillArray(ctx, READ_DATA_OUTPUT, SFE_BIO_READ_DATA, SFE_BIO_MAXFAST_ARRAY_SIZE + SFE_BIO_MAXFAST_EXTENDED_DATA, ctx->bpmArrTwo);
 
-        libBpm.heartRate = ((uint16_t)ctx->bpmArrTwo[0] << 8);
-        libBpm.heartRate |= (ctx->bpmArrTwo[1]);
-        libBpm.heartRate /= 10;
-        libBpm.confidence = ctx->bpmArrTwo[2];
-        libBpm.oxygen = ((uint16_t)ctx->bpmArrTwo[3] << 8);
-        libBpm.oxygen |= ctx->bpmArrTwo[4];
-        libBpm.oxygen /= 10.0;
-        libBpm.status = ctx->bpmArrTwo[5];
+        libBpm.status = ctx->bpmArrTwo[0]; // Status first
 
-        uint16_t tempVal = ((uint16_t)ctx->bpmArrTwo[6] << 8);
-        tempVal |= ctx->bpmArrTwo[7];
+        libBpm.heartRate = ((uint16_t)ctx->bpmArrTwo[1] << 8);
+        libBpm.heartRate |= (ctx->bpmArrTwo[2]);
+        libBpm.heartRate /= 10;
+
+        libBpm.confidence = ctx->bpmArrTwo[3];
+
+        libBpm.oxygen = ((uint16_t)ctx->bpmArrTwo[4] << 8);
+        libBpm.oxygen |= ctx->bpmArrTwo[5];
+        libBpm.oxygen /= 10.0;
+
+        // In Mode 2, ExtStatus often comes immediately after SpO2 (Byte 6)
+        libBpm.extStatus = ctx->bpmArrTwo[6]; 
+
+        // R-Values then follow
+        uint16_t tempVal = ((uint16_t)ctx->bpmArrTwo[7] << 8);
+        tempVal |= ctx->bpmArrTwo[8];
         libBpm.rValue = tempVal;
         libBpm.rValue /= 10.0;
-        libBpm.extStatus = ctx->bpmArrTwo[8];
     }
     
     return libBpm;
