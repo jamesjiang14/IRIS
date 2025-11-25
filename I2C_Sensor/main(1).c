@@ -148,30 +148,21 @@ int main(void)
 
     MXC_Delay(MXC_DELAY_MSEC(100)); // 100ms delay after reconfiguration
 
+    MXC_GPIO_OutSet(MAX32664_MFIO.port, MAX32664_MFIO.mask); // High
+    MXC_GPIO_OutClr(MAX32664_RST.port, MAX32664_RST.mask); // Low
+    MXC_Delay(MXC_DELAY_MSEC(10));
+    MXC_GPIO_OutSet(MAX32664_RST.port, MAX32664_RST.mask); // High
+    MXC_Delay(MXC_DELAY_MSEC(1000));
+
     int bio_init_status = SFE_Bio_Begin(&bioHub, SENSOR_I2C_PORT, MAX32664_RST.port, MAX32664_RST.mask, MAX32664_MFIO.port, MAX32664_MFIO.mask);
     if (bio_init_status != 0) {
         printf("ERROR: SFE_Bio_Begin failed with code: %d\n", bio_init_status);
         while(1); // Stop execution
     } else {
         printf("MAX32664 initialized successfully.\n");
-    }
-    uint8_t state = SFE_Bio_ReadMAX30101State(&bioHub);
-    printf("State after Begin: %u\n", state);
-
-    uint8_t dummy = 0;
-    mxc_i2c_req_t req = {
-        .i2c = SENSOR_I2C_PORT,
-        .addr = 0x55,
-        .tx_buf = &dummy,
-        .tx_len = 1,
-        .rx_buf = NULL,
-        .rx_len = 0,
-        .restart = 0,
-    };
-    int ping = MXC_I2C_MasterTransaction(&req);
-    printf("MAX32664 ping => %d\n", ping);
-
-    int BioConfig = SFE_Bio_ConfigBpm(&bioHub, SFE_BIO_MODE_TWO); //Configure sensor for BPM mode two
+    }    
+    
+    int BioConfig = SFE_Bio_ConfigBpm(&bioHub, SFE_BIO_MODE_TWO); //Configure sensor for BPM mode one
     if (BioConfig != 0) {
         printf("ERROR: SFE_Bio_ConfigBpm failed with code: %d\n", BioConfig);
         while(1); // Stop execution
@@ -181,57 +172,24 @@ int main(void)
 
     MXC_Delay(MXC_DELAY_SEC(4)); // 4 seconds delay after Begin
 
-    dummy = 0;
-    mxc_i2c_req_t req1 = {
-        .i2c = SENSOR_I2C_PORT,
-        .addr = 0x57,
-        .tx_buf = &dummy,
-        .tx_len = 1,
-        .rx_buf = NULL,
-        .rx_len = 0,
-        .restart = 0,
-    };
-    ping = MXC_I2C_MasterTransaction(&req1);
-    printf("MAX30101 ping => %d\n", ping);
-
     // Attempt to enable the MAX30101 sensor
     int8_t control_status = SFE_Bio_Max30101Control(&bioHub, 1);
 
     if (control_status == 0) {
         // Command sent successfully, now verify the state
         uint8_t sensor_state = SFE_Bio_ReadMAX30101State(&bioHub);
-
-        MXC_Delay(MXC_DELAY_MSEC(100)); // 100ms delay after Begin
         
         if (sensor_state == 1) {
             printf("MAX30101 is enabled and should be running.\n");
             // If the LED is still off here, the issue is likely power or the MAX30101 itself.
         } else {
-            printf("State read back is NOT enabled (State: %u).\n", sensor_state);
+            printf("MAX30101 control command succeeded, but state read back is NOT enabled (State: %u).\n", sensor_state);
             // This indicates a subtle failure or a timing issue.
         }
     } else {
         printf("ERROR: Failed to send MAX30101 control command (Error: %d).\n", control_status);
         // This indicates a fundamental I2C communication issue with the MAX32664 hub.
     }
-
-    /*
-    mxc_gpio_cfg_t MAX32664_MFIO_IN = {
-        .port = MXC_GPIO0,
-        .mask = MXC_GPIO_PIN_19,
-        .func = MXC_GPIO_FUNC_IN,    // *** CRITICAL CHANGE: Set as Input ***
-        .pad  = MXC_GPIO_PAD_PULL_UP, // Use an internal pullup for open-drain line
-        .vssel = MXC_GPIO_VSSEL_VDDIOH,
-    };
-
-    if(MXC_GPIO_Config(&MAX32664_MFIO_IN) != E_NO_ERROR) {
-        printf("Error reconfiguring MFIO to input\n");
-        return -1;
-    }
-
-
-    printf("MFIO successfully reconfigured for reading interrupts.\n");
-    */
     
 
     while(1) {
@@ -287,38 +245,29 @@ int main(void)
         MXC_Delay(100000); // 100 ms
         */
 
-        //Heart Rate Sensor Polling 
+                //Heart Rate Sensor Polling 
         // Read the processed BPM/SpO2 data from the sensor hub
-        //if (MXC_GPIO_InGet(MAX32664_MFIO.port, MAX32664_MFIO.mask) == 0) {
-            
-        // 2. READ: Only read when data is ready
-        bioData_t data = SFE_Bio_ReadBpm(&bioHub);
+        bioData_t data = SFE_Bio_ReadBpm(&bioHub); //Read BPM data from sensor
 
-        // 3. FILTER: Check Status AND Confidence
-        // Status 1 = Finger Detected
-        // Confidence > 50% = Algorithm actually found a heartbeat
-        if (data.status == 0x01 || data.status == 0x03) { // 0x03 is sometimes used for 'Object Ready'
+        // Check the Finger Detected status (Byte 6 of the FIFO buffer)
+        if (data.status == 0x01) {
             
-            if(data.confidence > 50 && data.heartRate >= MinHeartRate) {
-                printf("[%lu] VALID DATA - HR: %u bpm | SpO2: %u%% | Conf: %u%%\n",
-                    loopCount, data.heartRate, data.oxygen, data.confidence);
-            } 
-            else {
-                // Finger is there, but sensor is still calibrating
-                printf("[%lu] Calibrating... Keep finger still. Conf: %u%%\n", loopCount, data.confidence);
-            }
-            
+            // --- DATA PRINT STATEMENT (Extracting the values) ---
+            printf("[%lu] HR: %3u bpm | SpO2: %3u%% | Conf: %3u%% | Status: 0x%02X\n",
+                   loopCount,
+                   data.heartRate,      // Extracted from Bytes 0, 1
+                   data.oxygen,         // Extracted from Bytes 3, 4
+                   data.confidence,     // Extracted from Byte 2
+                   data.status      // Extracted from Byte 5
+            );
+            MXC_Delay(MXC_DELAY_MSEC(250));
+
         } else {
-            // Status indicates no finger
-            printf("No Finger Detected.\n");
+            // Finger not detected (Byte 6 is 0x00)
+            if (loopCount % 1000 == 0){
+                printf("[%lu] Waiting for finger...\n", loopCount/1000);
+            }
+            loopCount++;
         }
-        //}
-        
-        // Do not put a massive delay here, or you will miss the MFIO window.
-        // A tiny delay is fine.
-        MXC_Delay(MXC_DELAY_MSEC(250));
-        loopCount++;
     }
-               
-        
 }
