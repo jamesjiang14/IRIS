@@ -19,8 +19,9 @@
 #define I2C_MASTER MXC_I2C1 ///< I2C instance (Featherboard)
 
 #define I2C_FREQ 4000 ///< I2C clock frequency
-#define SENSOR_HUB_ADDR 0x55 //MAX32664 Sensor Hub Starting Address 
+//#define SENSOR_HUB_ADDR 0x55 //MAX32664 Sensor Hub Starting Address 
 #define ADXL345_ADDR 0x1D //ADXL345 Device Starting Address with SDO high
+#define ARDUINO_ADDR   0x55
 
 #define E_NO_ERROR 0 //Variable to check for errors over I2C initialization
 
@@ -41,6 +42,14 @@ adxl345_handle_t ADXL345;
 #define ADXL345_BW_Rate 0x2C //manipulate sampling rate of accelerometer 
 #define ADXL345_DTA 0x32 //Beginning address of readable data
 
+typedef struct {
+    float heartRate;
+    float confidence;
+    float oxygen;
+    uint8_t status;
+    uint8_t extStatus;
+    float rValue;
+} bioData_t;
 
 // *****************************************************************************
 int main(void)
@@ -97,7 +106,7 @@ int main(void)
     uint8_t buffer[6];
     */
     
-    
+    /*
      printf("\n****************** I2C HEART RATE SENSOR DEMO *******************\n");
 
 
@@ -167,10 +176,38 @@ int main(void)
         printf("ERROR: Failed to send MAX30101 control command (Error: %d).\n", control_status);
         // This indicates a fundamental I2C communication issue with the MAX32664 hub.
     }
-    
+    */
 
     while(1) {
-        
+        bioData_t data;
+        memset(&data, 0, sizeof(bioData_t));
+
+        // Request sizeof(bioData_t) bytes from Arduino
+        mxc_i2c_req_t req;
+        req.i2c            = I2C_MASTER;
+        req.addr           = ARDUINO_ADDR;
+        req.tx_buf         = NULL;       // pure read
+        req.tx_len         = 0;
+        req.rx_buf         = (uint8_t*)&data;
+        req.rx_len         = sizeof(bioData_t);
+        req.restart        = 0;
+
+        int result = MXC_I2C_MasterTransaction(&req);
+
+        if (result != E_NO_ERROR) {
+            printf("I2C Read Error: %d\n", result);
+        } else {
+            // Print data just like Arduino Serial Monitor
+            printf("Heartrate: %.2f\n", data.heartRate);
+            printf("Confidence: %.2f\n", data.confidence);
+            printf("Oxygen: %.2f\n", data.oxygen);
+            printf("Status: %u\n", data.status);
+            printf("Extended Status: %u\n", data.extStatus);
+            printf("Blood Oxygen R value: %.3f\n\n", data.rValue);
+        }
+
+        MXC_Delay(250000); // 250ms
+    
         /*
         //Haptic Code for toggle state
         if (HapticState == 1) {
@@ -222,6 +259,7 @@ int main(void)
         MXC_Delay(100000); // 100 ms
         */
 
+        /*
         //Heart Rate Sensor Polling 
         // Read the processed BPM/SpO2 data from the sensor hub
         bioData_t data = SFE_Bio_ReadBpm(&bioHub); //Read BPM data from sensor
@@ -246,9 +284,9 @@ int main(void)
             }
             loopCount++;
         }
-               
-        
-        }
+        */ 
+        }       
+    
 }
 
     
