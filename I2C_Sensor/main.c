@@ -18,7 +18,7 @@
 /***** Definitions *****/
 #define I2C_MASTER MXC_I2C1 ///< I2C instance (Featherboard)
 
-#define I2C_FREQ 4000 ///< I2C clock frequency
+#define I2C_FREQ 400000 ///< I2C clock frequency
 //#define SENSOR_HUB_ADDR 0x55 //MAX32664 Sensor Hub Starting Address 
 #define ADXL345_ADDR 0x1D //ADXL345 Device Starting Address with SDO high
 #define ARDUINO_ADDR   0x55
@@ -35,7 +35,7 @@ sfe_bio_ctx_t bioHub;
 
 
 //ADXL345 Commands
-adxl345_handle_t ADXL345;
+
 
 #define ADXL345_PWR_CTRL 0x2D //Set device in measurement mode  
 #define ADXL345_DTA_FORM 0x31 //Manipulate format of data in terms of G's
@@ -51,11 +51,56 @@ typedef struct {
     float rValue;
 } bioData_t;
 
+
+
 // *****************************************************************************
 int main(void)
 { 
     MXC_Delay(SEC(1));
 
+    struct adxl345_dev *adxl_dev = NULL;
+    struct adxl345_init_param init_param;
+    int32_t status = 0;
+    
+    // Acceleration readings
+    float x_g, y_g, z_g;
+    int16_t x_raw, y_raw, z_raw;
+
+    printf("\n***** MAX78000 ADXL345 I2C Demo *****\n");
+
+    // Initialize parameters for the ADXL345 driver
+    init_param.i2c_inst = SENSOR_I2C_PORT;
+    init_param.i2c_addr = ADXL345_ADDR;
+    init_param.dev_type = ID_ADXL345;
+    
+    // Set preferred range and resolution (optional, defaults to +/- 2g, 10-bit)
+    init_param.selected_range = ADXL345_RANGE_PM_8G; // Set to +/- 8g range
+    init_param.full_resolution_set = ADXL345_FULL_RES; // Enable Full Resolution (13-bit)
+
+    // 1. Initialize the ADXL345 device (initializes I2C and checks device ID)
+    status = adxl345_init(&adxl_dev, init_param);
+    
+    if (status != 0) {
+        printf("ERROR: ADXL345 Initialization Failed! (Status: %ld)\n", status);
+        printf("Check I2C connections and slave address (0x%X).\n", ADXL345_ADDR);
+        MXC_Delay(MXC_DELAY_SEC(5));
+        return 1;
+    }
+    
+    printf("ADXL345 initialized successfully.\n");
+    
+    // 2. Configure the sensor's measurement properties
+    
+    // Set range and resolution
+    adxl345_set_range_resolution(adxl_dev, 
+                                 init_param.selected_range, 
+                                 init_param.full_resolution_set);
+    
+    // Put the device in Measure Mode (continuous polling)
+    adxl345_set_power_mode(adxl_dev, 1);
+    printf("ADXL345 set to Measure Mode.\n");
+
+    /*
     //Configure I2C
     printf("\n****************** I2C Configuration*******************\n");
     int error = MXC_I2C_Init(I2C_MASTER, 1, 0);
@@ -65,7 +110,9 @@ int main(void)
     }
 
     MXC_I2C_SetFrequency(I2C_MASTER, I2C_FREQ);
-    
+    */
+
+
     /*
     printf("\n****************** DFR0440 Haptic Module Control *******************\n");
     
@@ -91,20 +138,9 @@ int main(void)
     printf("GPIO Configured. Waiting for HapticState change...\n");
     */
 
-    /*
-    //ADXL345 Initialization
-    uint8_t init_data[2];
-    adxl345_init(&ADXL345);
-    adxl345_set_addr_pin(&ADXL345, ADXL345_ADDR);
-
-    adxl345_set_mode(&ADXL345, ADXL345_MODE_BYPASS);
-    adxl345_set_interface(&ADXL345, ADXL345_INTERFACE_IIC);
-    adxl345_set_range(&ADXL345, ADXL345_RANGE_8G);
-    adxl345_set_rate(&ADXL345, ADXL345_RATE_400);
-
-    uint8_t reg = 0x32;
-    uint8_t buffer[6];
-    */
+    
+   
+    
     
     /*
      printf("\n****************** I2C HEART RATE SENSOR DEMO *******************\n");
@@ -179,6 +215,20 @@ int main(void)
     */
 
     while(1) {
+        
+        adxl345_get_g_xyz(adxl_dev, &x_g, &y_g, &z_g);
+        
+        printf("G's: X: %+1.3f | Y: %+1.3f | Z: %+1.3f\n", x_g, y_g, z_g);
+        
+        /* // Option 2: Read and print raw 16-bit values (uncomment if preferred)
+        adxl345_get_xyz(adxl_dev, &x_raw, &y_raw, &z_raw);
+        printf("Raw: X: %d | Y: %d | Z: %d\n", x_raw, y_raw, z_raw);
+        */
+
+        // Delay before the next reading
+        MXC_Delay(MXC_DELAY_MSEC(100));
+    
+        /*
         bioData_t data;
         memset(&data, 0, sizeof(bioData_t));
 
@@ -207,7 +257,8 @@ int main(void)
         }
 
         MXC_Delay(250000); // 250ms
-    
+        */
+
         /*
         //Haptic Code for toggle state
         if (HapticState == 1) {
@@ -231,33 +282,9 @@ int main(void)
         while(PB_Get(0)){}
         */
         
-        /*
+        
         //Accelerometer polling of X, Y, and Z data
-        mxc_i2c_req_t req;
-        req.i2c = I2C_MASTER;
-        req.addr = ADXL345_ADDR;
-        req.tx_buf = &reg;
-        req.tx_len = 1;
-        req.rx_buf = buffer;
-        req.rx_len = 6;
-        req.restart = 1;
-        req.callback = NULL;
-
-        int error = MXC_I2C_MasterTransaction(&req);
-        if (error != E_NO_ERROR) {
-            printf("I2C Read Error: %d\n", error);
-            MXC_Delay(50000);
-            continue;
-        }
-
-        int16_t x = (buffer[1] << 8) | buffer[0];
-        int16_t y = (buffer[3] << 8) | buffer[2];
-        int16_t z = (buffer[5] << 8) | buffer[4];
-
-        printf("X=%d, Y=%d, Z=%d\n", x, y, z);
-
-        MXC_Delay(100000); // 100 ms
-        */
+                
 
         /*
         //Heart Rate Sensor Polling 
