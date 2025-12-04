@@ -68,8 +68,8 @@
 
 // --- Core I2C Driver Wrappers ---
 
-int i2c_read(mxc_i2c_regs_t *i2c, uint8_t address, uint8_t *rx_buf, uint32_t rx_len);
-int i2c_write(mxc_i2c_regs_t *i2c, uint8_t address, uint8_t *data, uint32_t len);
+uint8_t i2c_read(mxc_i2c_regs_t *i2c, uint8_t address, uint8_t *rx_buf, uint32_t rx_len);
+uint8_t i2c_write(mxc_i2c_regs_t *i2c, uint8_t address, uint8_t *data, uint32_t len);
 
 // --- Core Sensor Hub I/O ---
 
@@ -112,7 +112,7 @@ uint8_t set_interrupt_threshold(mxc_i2c_regs_t *i2c, uint8_t address, uint8_t nu
 
 uint8_t enable_agc_algorithm(mxc_i2c_regs_t *i2c, uint8_t address);
 
-uint8_t enable_max301010(mxc_i2c_regs_t *i2c, uint8_t address);
+uint8_t enable_max30101(mxc_i2c_regs_t *i2c, uint8_t address);
 
 uint8_t enable_hrspo2_algorithm(mxc_i2c_regs_t *i2c, uint8_t address);
 

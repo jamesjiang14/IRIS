@@ -94,10 +94,10 @@ int main(void)
     // Ensure Sensor Hub is in Application Mode
     status = read_sensor_hub_mode(I2C_PORT, MAX32664_ADDR, &mode);
     if (status != E_NO_ERROR) {
-        printf("Status of read_sensor_hub_mode: 0x%02X\n", status);
+        printf("Sensor Hub Mode Read Failed. Status: 0x%02X\n", status);
         return status;
     } else if(mode == 0x02) {
-        printf("MAX32664 not in application mode. Mode: 0x%02X\n", mode);
+        printf("MAX32664 not in Application Mode. Mode: 0x%02X\n", mode);
         return mode;
     }
 
@@ -124,7 +124,7 @@ int main(void)
         uint16_t safe_hr;
         uint16_t safe_spo2;
 
-        disable_interrupts(); 
+        __disable_irq(); 
         
         safe_hr = hr;
         safe_spo2 = spo2;
@@ -132,10 +132,10 @@ int main(void)
         uint8_t safe_conf = conf;
         uint8_t safe_state = state;
         
-        enable_interrupts();
+        __enable_irq();
 
         if (safe_state == 0x03) {
-            printf("Heart Rate: %.1f bpm, SpO2: %.1f%%, Conf: %d%%\n", (float)safe_hr/10.0, (float)safe_spo2/10.0, safe_conf);
+            printf("Heart Rate: %.1f bpm, SpO2: %.1f%%, Conf: %d%%\n", (double)safe_hr/10.0, (double)safe_spo2/10.0, safe_conf);
         } else {
             printf("State: 0x%02X\n", safe_state);
         }
