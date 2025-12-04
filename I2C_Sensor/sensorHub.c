@@ -6,7 +6,7 @@
 uint8_t read_bpm_algo(mxc_i2c_regs_t *i2c, uint8_t address, uint16_t *hr, uint8_t *conf, uint16_t *spo2, uint8_t *state) {
     
     uint8_t byte;
-    uint8_t status = sensorHub_read(i2c, address, HUB_STATUS, 0x00, &byte, 1, CMD_DELAY);
+    uint8_t status = sensorHub_read(i2c, address, HUB_STATUS, HUB_STATUS_INDEX, &byte, 1, CMD_DELAY);
     if(status != 0x00){
         return status;
     } 
@@ -16,7 +16,7 @@ uint8_t read_bpm_algo(mxc_i2c_regs_t *i2c, uint8_t address, uint16_t *hr, uint8_
         return ERR_DATA_NOT_READY;
     }
 
-    status = sensorHub_read(i2c, address, READ_DATA_OUTPUT, 0x00, &byte, 1, CMD_DELAY);
+    status = sensorHub_read(i2c, address, READ_DATA_OUTPUT, READ_NUM_SAMPLES, &byte, 1, CMD_DELAY);
     if (status != 0x00) {
         return status;
     } 
@@ -27,7 +27,7 @@ uint8_t read_bpm_algo(mxc_i2c_regs_t *i2c, uint8_t address, uint16_t *hr, uint8_
         return -1;
     }
 
-    status = sensorHub_read(i2c, address, READ_DATA_OUTPUT, 0x01, data, data_len, CMD_DELAY);
+    status = sensorHub_read(i2c, address, READ_DATA_OUTPUT, READ_OUTPUT_BYTES, data, data_len, CMD_DELAY);
     if (status != 0x00) {
         free(data);
         return status;
@@ -43,18 +43,18 @@ uint8_t read_bpm_algo(mxc_i2c_regs_t *i2c, uint8_t address, uint16_t *hr, uint8_
 }
 
 uint8_t read_sensor_hub_mode(mxc_i2c_regs_t *i2c, uint8_t address, uint8_t *mode) {
-    uint8_t status = sensorHub_read(i2c, address, READ_DEVICE_MODE, 0x00, mode, 1, CMD_DELAY);
+    uint8_t status = sensorHub_read(i2c, address, READ_DEVICE_MODE, DEVICE_MODE_INDEX, mode, 1, CMD_DELAY);
     return status;
 }
 
 uint8_t set_output_mode(mxc_i2c_regs_t *i2c, uint8_t address, uint8_t mode) {
-    uint8_t cmd[3] = {OUTPUT_MODE, 0x00, mode};
+    uint8_t cmd[3] = {OUTPUT_MODE, OUTPUT_MODE_FORMAT, mode};
     uint8_t status = sensorHub_write(i2c, address, cmd, 3, CMD_DELAY);
     return status;
 }
 
 uint8_t set_interrupt_threshold(mxc_i2c_regs_t *i2c, uint8_t address, uint8_t num_samples) {
-    uint8_t cmd[3] = {OUTPUT_MODE, 0x01, num_samples};
+    uint8_t cmd[3] = {OUTPUT_MODE, SET_FIFO_THRESHOLD, num_samples};
     uint8_t status = sensorHub_write(i2c, address, cmd, 3, CMD_DELAY);
     return status;
 }
