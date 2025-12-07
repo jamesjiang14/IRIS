@@ -17,9 +17,9 @@
 #define NUM_SAMPLES 0x0F
 
 #define RSTN_PORT MXC_GPIO0
-#define RSTN_PIN  MXC_GPIO_PIN_19
+#define RSTN_PIN  MXC_GPIO_PIN_5
 #define MFIO_PORT MXC_GPIO0
-#define MFIO_PIN  MXC_GPIO_PIN_11
+#define MFIO_PIN  MXC_GPIO_PIN_19
 
 mxc_gpio_cfg_t gpio_rstn;
 mxc_gpio_cfg_t gpio_mfio;
