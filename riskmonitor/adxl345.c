@@ -61,7 +61,7 @@ uint8_t adxl345_get_register_value(struct adxl345_dev *dev,
  * @param register_address - Address of the register.
  * @param register_value   - Data value to write.
 *******************************************************************************/
-void adxl345_set_register_value(struct adxl345_dev *dev,
+int adxl345_set_register_value(struct adxl345_dev *dev,
 				uint8_t register_address,
 				uint8_t register_value)
 {
@@ -85,7 +85,7 @@ void adxl345_set_register_value(struct adxl345_dev *dev,
     error = MXC_I2C_MasterTransaction(&req);
 
     // Error handling could be added here
-    (void)error;
+	return error; 
 }
 
 /***************************************************************************//**
@@ -165,7 +165,7 @@ int32_t adxl345_remove(struct adxl345_dev *dev)
  * Example: 0x0 - standby mode.
  * 0x1 - measure mode.
 *******************************************************************************/
-void adxl345_set_power_mode(struct adxl345_dev *dev,
+int adxl345_set_power_mode(struct adxl345_dev *dev,
 			    uint8_t pwr_mode)
 {
 	uint8_t old_power_ctl = 0;
@@ -175,10 +175,12 @@ void adxl345_set_power_mode(struct adxl345_dev *dev,
 			ADXL345_POWER_CTL);
 	new_power_ctl = old_power_ctl & ~ADXL345_PCTL_MEASURE;
 	new_power_ctl = new_power_ctl | (pwr_mode * ADXL345_PCTL_MEASURE);
-	MXC_Delay(MXC_DELAY_MSEC(2)); // tSUSTAIN = 10us
-	adxl345_set_register_value(dev,
+	MXC_Delay(MXC_DELAY_MSEC(2));
+	int error = adxl345_set_register_value(dev,
 				   ADXL345_POWER_CTL,
 				   new_power_ctl);
+
+	return error;
 }
 
 /***************************************************************************//**
@@ -613,7 +615,7 @@ void adxl345_set_range_resolution(struct adxl345_dev *dev,
 	new_data_format = old_data_format &
 			  ~(ADXL345_RANGE(0x3) | ADXL345_FULL_RES);
 	new_data_format =  new_data_format | ADXL345_RANGE(g_range) | full_res;
-	MXC_Delay(MXC_DELAY_MSEC(2)); // tSUSTAIN = 10us
+	MXC_Delay(MXC_DELAY_MSEC(20));
 	adxl345_set_register_value(dev,
 				   ADXL345_DATA_FORMAT,
 				   new_data_format);

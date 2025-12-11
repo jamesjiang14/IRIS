@@ -10,7 +10,7 @@
 * any party or parties not specified in the license agreement and/or
 * nondisclosure agreement is expressly prohibited.
 *
-* The above copyright notice and this permission notice shall be included
+* The above copyright notice and this perc:\Users\Brian Boner\Downloads\main (1).cmission notice shall be included
 * in all copies or substantial portions of the Software.
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
@@ -58,6 +58,7 @@
 #include "sampleoutput.h"
 #include "utils.h"
 #include "risk_monitor.h"
+#include "sensorHub.h"
 #include "gpio.h"     // <-- for haptic GPIO
 #include <stdio.h>
 #include <stdint.h>
@@ -88,29 +89,14 @@ const char classes[CNN_NUM_OUTPUTS][10] = { "Closed", "Open" };
 
 
 /***** Definitions *****/
-#define I2C_MASTER MXC_I2C1 ///< I2C instance (Featherboard)
+#define I2C_PORT MXC_I2C1 ///< I2C instance (Featherboard)
 
-#define I2C_FREQ 400000 ///< I2C clock frequency
+#define I2C_FREQ 100000 ///< I2C clock frequency
 //#define SENSOR_HUB_ADDR 0x55 //MAX32664 Sensor Hub Starting Address 
 #define ADXL345_ADDR 0x1D //ADXL345 Device Starting Address with SDO high
-#define ARDUINO_ADDR   0x55
+#define MAX32664_ADDR 0x55
 
 #define E_NO_ERROR 0 //Variable to check for errors over I2C initialization
-
-
-#define SENSOR_I2C_PORT    MXC_I2C1
-
-#define SUBCMD_EN 0x00 //enter application mode of sensor 
-#define READ_DATA_CMD 0x12 //address for read data command 
-
-
-//ADXL345 Commands
-
-
-#define ADXL345_PWR_CTRL 0x2D //Set device in measurement mode  
-#define ADXL345_DTA_FORM 0x31 //Manipulate format of data in terms of G's
-#define ADXL345_BW_Rate 0x2C //manipulate sampling rate of accelerometer 
-#define ADXL345_DTA 0x32 //Beginning address of readable data
 
 
 // Classification layer:
@@ -120,16 +106,15 @@ static q15_t  ml_softmax[CNN_NUM_OUTPUTS];
 volatile uint32_t cnn_time; // Stopwatch
 
 static uint32_t input_0[IMAGE_SIZE_X * IMAGE_SIZE_Y];
-static uint8_t  image_buffer[IMAGE_SIZE_X * IMAGE_SIZE_Y * 3];
-
-static uint32_t lens;
-static uint32_t ws;
-static uint32_t hs;
 
 static RiskMonitor g_risk_monitor;
 
 // Make ConsoleUart available to helper functions
 static mxc_uart_regs_t *ConsoleUart = NULL;
+
+#define ADXL345_PWR_CTRL 0x2D //Set device in measurement mode  
+#define ADXL345_DTA_FORM 0x31 //Manipulate format of data in terms of G's
+#define ADXL345_BW_Rate 0x2C //manipulate sampling rate of accelerometer 
 
 // -------------------- HAPTIC (DFR0440) SETUP --------------------
 
@@ -164,12 +149,6 @@ static void Haptic_Set(bool on)
 
 // ---------------------------------------------------------------
 
-void fail(void)
-{
-    printf("\n*** FAIL ***\n\n");
-    while (1) {}
-}
-
 void load_input(void)
 {
     // This function loads the sample data input -- replace with actual data
@@ -203,10 +182,6 @@ void capture_process_camera(void)
     camera_get_image(&raw, &imgLen, &w, &h);
 
     printf("W:%d H:%d L:%d \n", w, h, imgLen);
-
-    lens = imgLen;
-    ws   = w;
-    hs   = h;
 
     for (int row = 0; row < (int)h; row++) {
         // Wait until camera streaming buffer is full
@@ -264,6 +239,21 @@ static int check_for_backslash(void)
 }
 // ----------------------------------------------------
 
+// Place this function somewhere accessible (e.g., above main)
+void I2C_Soft_Reinit(mxc_i2c_regs_t *i2c_instance)
+{
+    // Disable the peripheral to clear internal state
+    MXC_I2C_Shutdown(i2c_instance); 
+    
+    // Re-initialize
+    MXC_I2C_Init(i2c_instance, 1, 0); 
+    MXC_I2C_SetFrequency(i2c_instance, I2C_FREQ);
+    
+    // Clear FIFOs (still good practice)
+    MXC_I2C_ClearRXFIFO(i2c_instance);
+    MXC_I2C_ClearTXFIFO(i2c_instance);
+}
+
 // -------------------- ADXL345 continuous polling support --------------------
 // Make the ADXL device and the latest accel values global so we can poll from
 // idle loops and keep values fresh even when waiting for keypresses.
@@ -281,6 +271,8 @@ static void PollAccel(void)
     adxl345_get_g_xyz(g_adxl_dev, &g_x_g, &g_y_g, &g_z_g);
     g_gmag = gforce_mag_from_xyz(g_x_g, g_y_g, g_z_g);
     g_final_g_xz = gforce_weighted_from_xz(g_x_g, g_z_g);
+
+    I2C_Soft_Reinit(I2C_PORT);
 }
 
 // ----------------------------------------------------
@@ -295,7 +287,7 @@ int main(void)
     int id;
 
     // Wait for PMIC 1.8V to become available, about 180ms after power up.
-    MXC_Delay(200000);
+    MXC_Delay(MXC_DELAY_SEC(1));
 
     /* Enable camera power */
     Camera_Power(POWER_ON);
@@ -373,11 +365,15 @@ int main(void)
     // Init haptic GPIO (DFR0440)
     Haptic_Init();
 
-    printf("********** Press '\\' on your PC console to start 2-second eye window **********\r\n");
-    printf("Sampling at ~0.5 s per frame (%d frames per window).\r\n", EYE_WINDOW_SIZE);
-
     /* Enable CNN clock */
     MXC_SYS_ClockEnable(MXC_SYS_PERIPH_CLOCK_CNN);
+
+    MXC_SYS_ClockEnable(MXC_SYS_PERIPH_CLOCK_I2C0);
+
+    int error = MXC_I2C_Init(I2C_PORT, 1, 0);
+    if (error != E_NO_ERROR) return error;
+    
+    MXC_I2C_SetFrequency(I2C_PORT, I2C_FREQ);
 
     // ______________________________________________________________________________________________
     // Move ADXL345 device handle to global so PollAccel can read it at any time
@@ -389,7 +385,7 @@ int main(void)
     printf("\n***** MAX78000 ADXL345 I2C Demo (continuous polling) *****\n");
 
     // Initialize parameters for the ADXL345 driver
-    init_param.i2c_inst = SENSOR_I2C_PORT;
+    init_param.i2c_inst = I2C_PORT;
     init_param.i2c_addr = ADXL345_ADDR;
     init_param.dev_type = ID_ADXL345;
     
@@ -397,7 +393,7 @@ int main(void)
     init_param.selected_range = ADXL345_RANGE_PM_8G; // Set to +/- 8g range
     init_param.full_resolution_set = ADXL345_FULL_RES; // Enable Full Resolution (13-bit)
 
-    // 1. Initialize the ADXL345 device (initializes I2C and checks device ID)
+    // Initialize the ADXL345 device (initializes I2C and checks device ID)
     status = adxl345_init(&g_adxl_dev, init_param);
     
     if (status != 0) {
@@ -409,19 +405,21 @@ int main(void)
     
     printf("ADXL345 initialized successfully.\n");
     
-    // 2. Configure the sensor's measurement properties
-    
     // Set range and resolution
     adxl345_set_range_resolution(g_adxl_dev, 
                                  init_param.selected_range, 
                                  init_param.full_resolution_set);
+
+    MXC_Delay(MXC_DELAY_MSEC(20));
     
     // Put the device in Measure Mode (continuous polling)
-    adxl345_set_power_mode(g_adxl_dev, 1);
-    printf("ADXL345 set to Measure Mode.\n");
+    ret = adxl345_set_power_mode(g_adxl_dev, 1);
+    if (ret != E_NO_ERROR) {
+        printf("Error Setting ADXL345 to Measure Mode: %d", ret);
+        return ret;
+    }
 
-    // Immediately sample once to prime the globals
-    //PollAccel();
+    printf("ADXL345 set to Measure Mode.\n");
 
     while (1) {
         // Wait for '\' key from PC to start a new 2-second window
@@ -473,23 +471,24 @@ int main(void)
             // --- read accelerometer now and compute weighted XZ value ---
             // Use the latest polled value so reading is effectively continuous.
             // But also poll now to get the freshest sample at inference time.
-            //PollAccel(); // refresh before computing/federating into RiskMonitor
-            //float eye_accel_xz = g_final_g_xz;
+            //MXC_Delay(MXC_DELAY_MSEC(100));
+            PollAccel(); // refresh before computing/federating into RiskMonitor
+            float eye_accel_xz = g_final_g_xz;
 
             // Update RiskMonitor with real accel (final_g_xz) instead of 0.0f
             bool alert = RiskMonitor_Update(&g_risk_monitor,
                                             eye_closed_conf_pct,
-                                            0.0f, 0.7f);       // TODO: real HR ROC (BPM/s)
-                                            //eye_accel_xz); // <-- pass weighted XZ g here
+                                            0.0f,       // TODO: real HR ROC (BPM/s)
+                                            eye_accel_xz); // <-- pass weighted XZ g here
 
             float score = RiskMonitor_GetScore(&g_risk_monitor);
 
             // Print the sample, include accel XZ on the same line
             printf("Sample %d/%d: eye_closed_conf=%.1f%%, score=%.3f, accel_xz=%.3f g, alert=%d\r\n",
                    sample_idx + 1, EYE_WINDOW_SIZE,
-                   eye_closed_conf_pct, score, 0.7f, alert ? 1 : 0);
+                   (double)eye_closed_conf_pct, (double)score, (double)eye_accel_xz, alert ? 1 : 0);
 
-            // Per-0.5s BUZZ / no buzz + haptic drive
+            // Per-0.1s BUZZ / no buzz + haptic drive
             if (alert) {
                 printf("BUZZ\r\n");
                 Haptic_Set(true);
@@ -498,29 +497,14 @@ int main(void)
                 Haptic_Set(false);
             }
 
-            // Re-pack last grayscale image into RGB888 buffer for PC download
-            int count = 0;
-            for (int pix = 0; pix < (int)(lens / 4); ++pix) {
-                image_buffer[count++] =
-                    (uint8_t)((input_0[pix] >> 16) & 0xFF);
-                image_buffer[count++] =
-                    (uint8_t)((input_0[pix] >> 8) & 0xFF);
-                image_buffer[count++] =
-                    (uint8_t)(input_0[pix] & 0xFF);
-            }
-
-            // Delay to roughly hit 0.5 s per frame, ignoring processing time
+            // Delay to roughly hit 0.1 s per frame, ignoring processing time
             if (sample_idx < (EYE_WINDOW_SIZE - 1)) {
-                MXC_Delay(SEC(1) / 2); // ~0.5 s
+                MXC_Delay(MXC_DELAY_MSEC(100)); // ~0.1 s
             }
-        } // end 2-second window loop
+        } 
 
         float final_score = RiskMonitor_GetScore(&g_risk_monitor);
         bool  final_alert = RiskMonitor_GetAlertFlag(&g_risk_monitor);
-
-        printf("\r\n[RiskMonitor] 2-second window complete.\r\n");
-        printf("RiskMonitor: score=%.3f, alert=%d\r\n",
-               final_score, final_alert ? 1 : 0);
 
         if (final_alert) {
             printf("BUZZ\r\n");

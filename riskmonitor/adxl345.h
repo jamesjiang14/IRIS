@@ -210,7 +210,7 @@ uint8_t adxl345_get_register_value(struct adxl345_dev *dev,
 				   uint8_t register_address);
 
 /*! Writes data into a register. */
-void adxl345_set_register_value(struct adxl345_dev *dev,
+int adxl345_set_register_value(struct adxl345_dev *dev,
 				uint8_t register_address,
 				uint8_t register_value);
 
@@ -222,7 +222,7 @@ int32_t adxl345_init(struct adxl345_dev **device,
 int32_t adxl345_remove(struct adxl345_dev *dev);
 
 /*! Places the device into standby/measure mode. */
-void adxl345_set_power_mode(struct adxl345_dev *dev,
+int adxl345_set_power_mode(struct adxl345_dev *dev,
 			    uint8_t pwr_mode);
 
 /*! Reads the raw output data of each axis. */
